@@ -154,6 +154,23 @@ func resourceBigQueryTable() *schema.Resource {
 				},
 			},
 
+			"clustering": &schema.Schema{
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"fields": {
+							Type:     schema.TypeList,
+							Optional: true,
+							ForceNew: true,
+							Elem:     &schema.Schema{Type: schema.TypeString},
+							Set:      schema.HashString,
+						},
+					},
+				},
+			},
+
 			// CreationTime: [Output-only] The time when this table was created, in
 			// milliseconds since the epoch.
 			"creation_time": {
@@ -277,6 +294,10 @@ func resourceTable(d *schema.ResourceData, meta interface{}) (*bigquery.Table, e
 		table.TimePartitioning = expandTimePartitioning(v)
 	}
 
+	if v, ok := d.GetOk("clustering"); ok {
+		table.Clustering = expandClustering(v)
+	}
+
 	return table, nil
 }
 
@@ -343,6 +364,12 @@ func resourceBigQueryTableRead(d *schema.ResourceData, meta interface{}) error {
 
 	if res.TimePartitioning != nil {
 		if err := d.Set("time_partitioning", flattenTimePartitioning(res.TimePartitioning)); err != nil {
+			return err
+		}
+	}
+
+	if res.Clustering != nil {
+		if err := d.Set("clustering", flattenClustering(res.Clustering)); err != nil {
 			return err
 		}
 	}
@@ -439,6 +466,20 @@ func expandTimePartitioning(configured interface{}) *bigquery.TimePartitioning {
 	return tp
 }
 
+func expandClustering(configured interface{}) *bigquery.Clustering {
+	raw := configured.([]interface{})[0].(map[string]interface{})
+	clustering := &bigquery.Clustering{}
+	if v := raw["fields"]; v != nil {
+		vs := v.(*schema.Set)
+		fields := make([]string, vs.Len())
+		for index, element := range vs.List() {
+			fields[index] = element.(string)
+		}
+		clustering.Fields = fields
+	}
+	return clustering
+}
+
 func flattenTimePartitioning(tp *bigquery.TimePartitioning) []map[string]interface{} {
 	result := map[string]interface{}{"type": tp.Type}
 
@@ -448,6 +489,20 @@ func flattenTimePartitioning(tp *bigquery.TimePartitioning) []map[string]interfa
 
 	if tp.ExpirationMs != 0 {
 		result["expiration_ms"] = tp.ExpirationMs
+	}
+
+	return []map[string]interface{}{result}
+}
+
+func flattenClustering(c *bigquery.Clustering) []map[string]interface{} {
+	result := map[string]interface{}{}
+
+	if c.Fields != "" {
+		fields := make([]string, c.Fields.Len())
+		for index, element := range c.Fields {
+			fields[index] = element
+		}
+		result["fields"] = fields
 	}
 
 	return []map[string]interface{}{result}

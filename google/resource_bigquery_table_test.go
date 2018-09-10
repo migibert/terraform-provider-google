@@ -45,6 +45,43 @@ func TestAccBigQueryTable_Basic(t *testing.T) {
 	})
 }
 
+func TestAccBigQueryTable_ParitioningClustering(t *testing.T) {
+	t.Parallel()
+
+	resourceName := "google_bigquery_table.test_partitioning_clustering"
+	datasetID := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	tableID := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	clustering_key_1 := "clustering_key_1"
+	clustering_key_2 := "clustering_key_2"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckBigQueryTableDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccBigQueryTable_PartitioningClustering(datasetID, tableID, clustering_key_1, clustering_key_2),
+				Check: resource.ComposeTestCheckFunc(
+					testAccBigQueryTableExists(resourceName),
+				),
+			},
+
+			{
+				Config: testAccBigQueryTable_PartitioningClustering(datasetID, tableID, clustering_key_2, clustering_key_1),
+				Check: resource.ComposeTestCheckFunc(
+					testAccBigQueryTableExists(resourceName),
+				),
+			},
+
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
 func TestAccBigQueryTable_View(t *testing.T) {
 	t.Parallel()
 
@@ -202,7 +239,7 @@ resource "google_bigquery_table" "test" {
 
   time_partitioning {
     type = "DAY"
-    field = "ts"	
+    field = "ts"
   }
 
   schema = <<EOH
@@ -234,6 +271,64 @@ resource "google_bigquery_table" "test" {
 ]
 EOH
 }`, datasetID, tableID)
+}
+
+func testAccBigQueryTable_PartitioningClustering(datasetID, tableID string, clustering_key_1 string, clustering_key_2 string) string {
+	return fmt.Sprintf(`
+resource "google_bigquery_dataset" "test_partitioning_clustering" {
+  dataset_id = "%s"
+}
+
+resource "google_bigquery_table" "test_partitioning_clustering" {
+  table_id   = "%s"
+  dataset_id = "${google_bigquery_dataset.test_partitioning_clustering.dataset_id}"
+
+  time_partitioning {
+    type = "DAY"
+    field = "ts"
+  }
+
+	clustering {
+		fields = ["%s", "%s"]
+	}
+
+  schema = <<EOH
+[
+  {
+    "name": "ts",
+    "type": "TIMESTAMP"
+  },
+	{
+		"name": "%s",
+		"type": "STRING"
+	},
+	{
+		"name": "%s",
+		"type": "INTEGER"
+	},
+  {
+    "name": "city",
+    "type": "RECORD",
+    "fields": [
+      {
+        "name": "id",
+        "type": "INTEGER"
+      },
+      {
+        "name": "coord",
+        "type": "RECORD",
+        "fields": [
+          {
+            "name": "lon",
+            "type": "FLOAT"
+          }
+        ]
+      }
+    ]
+  }
+]
+EOH
+}`, datasetID, tableID, clustering_key_1, clustering_key_2)
 }
 
 func testAccBigQueryTableWithView(datasetID, tableID string) string {
